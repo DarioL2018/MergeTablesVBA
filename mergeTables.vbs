@@ -25,8 +25,8 @@ Sub main()
 	End If
 
     set objExcelApp = CreateObject("Excel.Application")
-    objExcelApp.visible = True
-    objExcelApp.DisplayAlerts = True 
+    objExcelApp.visible = False
+    objExcelApp.DisplayAlerts = False 
     'Open Work Excel File 
     Set objXLBook = objExcelApp.workbooks.open(inputExcelFile)
     Dim arraySheets
@@ -43,8 +43,8 @@ Sub main()
     Set arraySheets = objXLBook.Worksheets  
     i = 0    
     set regExp=CreateObject("VBScript.RegExp")
-    regExp.IgnoreCase = False
-    regExp.Global = False
+    regExp.IgnoreCase = true
+    regExp.Global = true
     regExp.Pattern = "^[0]+" 'Pattern for name of sheets
     squery = "Table.Distinct(Table.Combine({"
     'Loop for each sheet that its name starts with 0
