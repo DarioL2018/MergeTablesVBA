@@ -25,38 +25,54 @@ Sub main()
 	End If
 
     set objExcelApp = CreateObject("Excel.Application")
-    objExcelApp.visible = False
-    objExcelApp.DisplayAlerts = False 
+    objExcelApp.visible = True
+    objExcelApp.DisplayAlerts = True 
     'Open Work Excel File 
     Set objXLBook = objExcelApp.workbooks.open(inputExcelFile)
     Dim arraySheets
     Dim region
-    Dim resultWrk
+    Dim resultWrk, tmptWrk, tempSheet
     Dim Sheet
     Dim i
     dim regExp, sName, Sformula, squery
 
+    'Create new Temp Workbook
+    set tmptWrk = objExcelApp.workbooks.Add
+
+    'Get sheets of the original Workbook
     Set arraySheets = objXLBook.Worksheets  
     i = 0    
     set regExp=CreateObject("VBScript.RegExp")
-    regExp.IgnoreCase = true
-    regExp.Global = true
-    regExp.Pattern = "0*" 'Pattern for name of sheets
+    regExp.IgnoreCase = False
+    regExp.Global = False
+    regExp.Pattern = "^[0]+" 'Pattern for name of sheets
     squery = "Table.Distinct(Table.Combine({"
+    'Loop for each sheet that its name starts with 0
+    'and copy that information in new temp workbook
     For Each Sheet In arraySheets
-        If regExp.Test(Sheet.Name) Then
-            sName = "Table" & i
+        If regExp.Test(Sheet.Name) Then     
+            sName = "Power_Table" & i
             if(i>0) Then
                 squery = squery & ", "
             end if
-            Set region = Sheet.Range("A1").CurrentRegion
+
+            'Create new sheets
+            Set tempSheet = tmptWrk.Sheets.Add(,tmptWrk.Sheets(tmptWrk.Sheets.Count))
+            tempSheet.Name = Sheet.Name
+
+            Sheet.Range("A10").CurrentRegion.Copy
+            'Paste Values in new WorkBook
+            tempSheet.Range("A1").PasteSpecial -4163 
+
+            'Select data
+            Set region = tempSheet.Range("A1").CurrentRegion
             'Create Query
-            Sheet.ListObjects.Add(1, region, , 1).Name = sName
+            tempSheet.ListObjects.Add(1, region, , 1).Name = sName
             Sformula = "Excel.CurrentWorkbook() {[Name=""" & sName & """]}[Content]"
-            objXLBook.Queries.Add sName, ("let" & Chr(13) & "" & Chr(10) & " Source =" & Sformula _
+            tmptWrk.Queries.Add sName, ("let" & Chr(13) & "" & Chr(10) & " Source =" & Sformula _
             & "" & Chr(13) & "" & Chr(10) & "in" & Chr(13) & "" & Chr(10) & " Source")
             'Create Connection
-            objXLBook.Connections.Add2 "Query – " & sName, _
+            tmptWrk.Connections.Add2 "Power_Query – " & sName, _
             "Connection to the '" & sName & "' query in the workbook.", _
             "OLEDB;Provider=Microsoft.Mashup.OleDb.1;Data Source=$Workbook$;Location=" _
             & sName & ";Extended Properties=""""", _
@@ -72,10 +88,10 @@ Sub main()
     squery = squery & "})"
 
     'Call Method to Create Merge Table
-    generateResultTable objXLBook, squery, idFieldName
+    generateResultTable tmptWrk, squery, idFieldName
     
     'Copy Values from Merge Table
-    objXLBook.Sheets("Merge Table").ListObjects(1).Range.Copy
+    tmptWrk.Sheets("Merge Table").ListObjects(1).Range.Copy
     
     'Create new Workbook
     set resultWrk = objExcelApp.workbooks.Add
@@ -86,6 +102,7 @@ Sub main()
     'Save Workbook and Close
     resultWrk.SaveAs outputFolder & "\File_2- End_result.xlsx"
     objXLBook.Close False
+    tmptWrk.Close False
     resultWrk.Close
     objExcelApp.Quit
     WriteLine "Process Completed"
@@ -96,10 +113,10 @@ Sub generateResultTable(objXLBook, squery, idFieldName)
     Dim currentSheet
     squery = squery & ", {""" & idFieldName & """})"
     'Create new Query to Append Tables
-    objXLBook.Queries.Add "Query - Merge", _
+    objXLBook.Queries.Add "Power_Query - Merge", _
     ("let" & Chr(13) & "" & Chr(10) & " Source =" & squery & "" & Chr(13) & "" & Chr(10) & "in" & Chr(13) & "" & Chr(10) & " Source")
 
-    Set qry = objXLBook.Queries("Query - Merge")
+    Set qry = objXLBook.Queries("Power_Query - Merge")
     'Create new Sheet at end of workbook
     Set currentSheet = objXLBook.Sheets.Add(,objXLBook.Sheets(objXLBook.Sheets.Count))
     currentSheet.Name = "Merge Table"
