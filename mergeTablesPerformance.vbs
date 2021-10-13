@@ -4,12 +4,13 @@ main
 'Main Program
 Sub main()
     Dim inputExcelFile, outputFolder, idFieldName
-    Dim objFso, objExcelApp, objShXL, objXLBook
+    Dim objFso, objExcelApp, objShXL, objXLBook, regexpress
 
     'Command line Variables
     inputExcelFile = "E:\Downloads\TEST Datei mit div. Produkten.xlsm"
     idFieldName = "Producto"
     outputFolder = "E:\Downloads\result"
+    regexpress = " \([^\)]+\)"
 
     Set objFso = CreateObject("Scripting.FileSystemObject")
 
@@ -21,18 +22,18 @@ Sub main()
 
 
     'Open Work Excel File
-    WriteLine "OpenFile " & Time() 
+    'WriteLine "OpenFile " & Time() 
     Set objXLBook = objExcelApp.Workbooks.Open(inputExcelFile, true)
     Dim arraySheets
     Dim region
     Dim resultWrk, tempSheet, rangeWithData, columnsRange
-    Dim Sheet, lastRow
+    Dim Sheet, SheetTmp
     Dim i
-    Dim regExp, sName, Sformula, squery, columnName
+    Dim regExp, regExpCell, sName, Sformula, squery, columnName
     Dim headersDictionary, primaryDictionary, listY, listX
     Dim colPosGlobal, rowPosGlobal, primaryPosGlobal, tmpArray
 
-    WriteLine "File was Open " & Time() 
+    'WriteLine "File was Open " & Time() 
     Set headersDictionary = CreateObject("Scripting.Dictionary")
     Set primaryDictionary = CreateObject("Scripting.Dictionary")
     
@@ -41,18 +42,41 @@ Sub main()
     i = 0
     colPosGlobal = 0
     rowPosGlobal = 1
+
+    'Pattern to identify worksheets that starts with 0
     Set regExp = CreateObject("VBScript.RegExp")
     regExp.IgnoreCase = True
     regExp.Global = True
     regExp.Pattern = "^[0]+" 'Pattern for name of sheets
-    'Loop for each sheet that its name starts with 0
-    'and copy that information in new temp workbook
-    lastRow=1
-    WriteLine "Start merging " & Time()
+
+    'Pattern to find _(AnyText) and replace
+    Set regExpCell = CreateObject("VBScript.RegExp")
+    regExpCell.IgnoreCase = True
+    regExpCell.Global = True
+    regExpCell.Pattern = regexpress 
+
+    'WriteLine "Start merging " & Time()
+    
+    'Only for Calculations - Array length
+    Dim xCal, ycal
+    xCal=0
+    ycal=0
+    For Each SheetTmp In arraySheets
+        If regExp.Test(SheetTmp.Name) Then
+            Dim rangetmp
+            Set rangetmp = SheetTmp.Range("A10").CurrentRegion
+            xCal = xCal + rangetmp.Rows.Count
+            yCal = yCal + rangetmp.Columns.Count
+        End If
+    Next
     
     'Initialize Array with max rows and columns
-    Dim arryTmp(10000,1000)
+    'WriteLine "xcal " & xCal & " ycal" & ycal
+    Dim arryTmp()
+    reDim arryTmp(xCal, yCal)
 
+    'Loop for each sheet that its name starts with 0
+    'and copy that information in new temp workbook
     For Each Sheet In arraySheets
         If regExp.Test(Sheet.Name) Then
             Set rangeWithData = Sheet.Range("A10").CurrentRegion
@@ -67,8 +91,7 @@ Sub main()
             rowsCount = UBound(tmpArray, 1) - LBound(tmpArray, 1) + 1
             columnsCount = UBound(tmpArray, 2) - LBound(tmpArray, 2) + 1
             
-            'ReDim arryTmp((rowsCount + rowPosGlobal), (columnsCount + colPosGlobal))
-
+            'Loop Rows
             For rowPosLocal = 1 To rowsCount
                 'Set listY = CreateObject("System.Collections.Sortedlist")
                 
@@ -86,15 +109,18 @@ Sub main()
                         rowWork = primaryDictionary(tmpArray(rowPosLocal, primaryPosSelection))
                     End If
                 End If
+
+                'Loop cols
                 For colPosLocal = 1 To columnsCount
                     headerValue = tmpArray(1, colPosLocal)
+                    'Check if column header exist else create
                     If Not headersDictionary.Exists(headerValue) Then
                         colPosGlobal = colPosGlobal + 1
                         headersDictionary.Add headerValue, colPosGlobal
-                        arryTmp(0, colPosGlobal-1) = headerValue
+                        arryTmp(0, colPosGlobal-1) = regExpCell.Replace(headerValue, "")
                         'addFieldToNewTable resultWrk.Worksheets(1), 1, colPosGlobal, headerValue
                     ElseIf rowPosLocal > 1 And Not existRow Then 'add new row
-                        arryTmp(rowWork-1, headersDictionary(headerValue)-1) = tmpArray(rowPosLocal, colPosLocal)
+                        arryTmp(rowWork-1, headersDictionary(headerValue)-1) = regExpCell.Replace(tmpArray(rowPosLocal, colPosLocal), "")
                         'addFieldToNewTable resultWrk.Worksheets(1), rowWork, headersDictionary(headerValue), tmpArray(rowPosLocal, colPosLocal)
                     End If
                     
