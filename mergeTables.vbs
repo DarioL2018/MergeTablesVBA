@@ -1,157 +1,177 @@
 Option Explicit
-
 main
 
 'Main Program
 Sub main()
     Dim inputExcelFile, outputFolder, idFieldName
-    Dim objFso, objExcelApp, objShXL, objXLBook
+    Dim objFso, objExcelApp, objShXL, objXLBook, regexpress
 
-    If WScript.Arguments.Count <> 3 Then
-		WriteLine "You need to specify input and output files."
-		WScript.Quit
-	End If
+    'Command line Variables
+    inputExcelFile = "E:\Downloads\TEST Datei mit div. Produkten.xlsm"
+    idFieldName = "Producto"
+    outputFolder = "E:\Downloads\result"
+    regexpress = " (\([^\)]+\))|([ \u00a0]\u2630{1}[ \u00a0]*)"
 
-    'Command line Variables 
-    inputExcelFile = WScript.Arguments(0)
-    idFieldName = WScript.Arguments(1)
-    outputFolder = WScript.Arguments(2)
+    Set objFso = CreateObject("Scripting.FileSystemObject")
 
-    set objFso = CreateObject("Scripting.FileSystemObject")
+    Set objExcelApp = CreateObject("Excel.Application")
+    objExcelApp.Visible = False
+    objExcelApp.DisplayAlerts = False
+    objExcelApp.ScreenUpdating = False
+    objExcelApp.DisplayStatusBar = False
 
-    If Not objFso.FileExists( inputExcelFile ) Then
-		WriteLine "Unable to find your input file " & inputExcelFile
-		WScript.Quit
-	End If
 
-    set objExcelApp = CreateObject("Excel.Application")
-    objExcelApp.visible = False
-    objExcelApp.DisplayAlerts = False 
-    'Open Work Excel File 
-    Set objXLBook = objExcelApp.workbooks.open(inputExcelFile)
+    'Open Work Excel File
+    'WriteLine "OpenFile " & Time() 
+    Set objXLBook = objExcelApp.Workbooks.Open(inputExcelFile, true)
     Dim arraySheets
     Dim region
-    Dim resultWrk, tmptWrk, tempSheet
-    Dim Sheet
+    Dim resultWrk, tempSheet, rangeWithData, columnsRange
+    Dim Sheet, SheetTmp
     Dim i
-    dim regExp, sName, Sformula, squery
+    Dim regExp, regExpCell, sName, Sformula, squery, columnName
+    Dim headersDictionary, primaryDictionary, listY, listX
+    Dim colPosGlobal, rowPosGlobal, primaryPosGlobal, tmpArray
 
-    'Create new Temp Workbook
-    set tmptWrk = objExcelApp.workbooks.Add
-
+    'WriteLine "File was Open " & Time() 
+    Set headersDictionary = CreateObject("Scripting.Dictionary")
+    Set primaryDictionary = CreateObject("Scripting.Dictionary")
+    
     'Get sheets of the original Workbook
-    Set arraySheets = objXLBook.Worksheets  
-    i = 0    
-    set regExp=CreateObject("VBScript.RegExp")
-    regExp.IgnoreCase = true
-    regExp.Global = true
+    Set arraySheets = objXLBook.Worksheets
+    i = 0
+    colPosGlobal = 0
+    rowPosGlobal = 1
+
+    'Pattern to identify worksheets that starts with 0
+    Set regExp = CreateObject("VBScript.RegExp")
+    regExp.IgnoreCase = True
+    regExp.Global = True
     regExp.Pattern = "^[0]+" 'Pattern for name of sheets
-    squery = "Table.Distinct(Table.Combine({"
+
+    'Pattern to find _(AnyText) and replace
+    Set regExpCell = CreateObject("VBScript.RegExp")
+    regExpCell.IgnoreCase = True
+    regExpCell.Global = True
+    regExpCell.Pattern = regexpress 
+
+    'WriteLine "Start merging " & Time()
+    
+    'Only for Calculations - Array length
+    Dim xCal, ycal
+    xCal=0
+    ycal=0
+    For Each SheetTmp In arraySheets
+        If regExp.Test(SheetTmp.Name) Then
+            Dim rangetmp
+            Set rangetmp = SheetTmp.Range("A10").CurrentRegion
+            xCal = xCal + rangetmp.Rows.Count
+            yCal = yCal + rangetmp.Columns.Count
+        End If
+    Next
+    
+    'Initialize Array with max rows and columns
+    'WriteLine "xcal " & xCal & " ycal" & ycal
+    Dim arryTmp()
+    reDim arryTmp(xCal, yCal)
+
     'Loop for each sheet that its name starts with 0
     'and copy that information in new temp workbook
     For Each Sheet In arraySheets
-        If regExp.Test(Sheet.Name) Then     
-            sName = "Power_Table" & i
-            if(i>0) Then
-                squery = squery & ", "
-            end if
+        If regExp.Test(Sheet.Name) Then
+            Set rangeWithData = Sheet.Range("A10").CurrentRegion
+            Set columnsRange = rangeWithData.Columns
+            
+            'Combine Local headers
+            Dim colPosLocal, primaryPosSelection, rowPosLocal            
+            Dim headerValue, rowValue, rowsCount, columnsCount
+            'rowValue = rangeWithData.Cells(rowPosLocal, colPosLocal).value
+            primaryPosSelection = 1
+            tmpArray =  rangeWithData.value2
+            rowsCount = UBound(tmpArray, 1) - LBound(tmpArray, 1) + 1
+            columnsCount = UBound(tmpArray, 2) - LBound(tmpArray, 2) + 1
+            
+            'Loop Rows
+            For rowPosLocal = 1 To rowsCount
+                'Set listY = CreateObject("System.Collections.Sortedlist")
+                
+                Dim existRow, rowWork
+                If rowPosLocal > 1 Then
+                    'check if primary key already exist 
+                    existRow = primaryDictionary.Exists(tmpArray(rowPosLocal, primaryPosSelection))
+                    If Not existRow Then
+                        'Increase one more row
+                        rowPosGlobal = rowPosGlobal + 1
+                        rowWork = rowPosGlobal
+                        'listX.Add rowWork, listY
+                    Else
+                        'Use the same row
+                        rowWork = primaryDictionary(tmpArray(rowPosLocal, primaryPosSelection))
+                    End If
+                End If
 
-            'Create new sheets
-            Set tempSheet = tmptWrk.Sheets.Add(,tmptWrk.Sheets(tmptWrk.Sheets.Count))
-            tempSheet.Name = Sheet.Name
-
-            Sheet.Range("A10").CurrentRegion.Copy
-            'Paste Values in new WorkBook
-            tempSheet.Range("A1").PasteSpecial -4163 
-
-            'Select data
-            Set region = tempSheet.Range("A1").CurrentRegion
-            'Create Query
-            tempSheet.ListObjects.Add(1, region, , 1).Name = sName
-            Sformula = "Excel.CurrentWorkbook() {[Name=""" & sName & """]}[Content]"
-            tmptWrk.Queries.Add sName, ("let" & Chr(13) & "" & Chr(10) & " Source =" & Sformula _
-            & "" & Chr(13) & "" & Chr(10) & "in" & Chr(13) & "" & Chr(10) & " Source")
-            'Create Connection
-            tmptWrk.Connections.Add2 "Power_Query – " & sName, _
-            "Connection to the '" & sName & "' query in the workbook.", _
-            "OLEDB;Provider=Microsoft.Mashup.OleDb.1;Data Source=$Workbook$;Location=" _
-            & sName & ";Extended Properties=""""", _
-            "SELECT * FROM [" & sName & "]", _
-            2, _
-            False, _
-            False
-            'Add Tables name to String
-            squery = squery & sName 
-            i = i + 1
+                'Loop cols
+                For colPosLocal = 1 To columnsCount
+                    headerValue = tmpArray(1, colPosLocal)
+                    'Check if column header exist else create
+                    If Not headersDictionary.Exists(headerValue) Then
+                        colPosGlobal = colPosGlobal + 1
+                        headersDictionary.Add headerValue, colPosGlobal
+                        arryTmp(0, colPosGlobal-1) = regExpCell.Replace(headerValue, "")
+                        'addFieldToNewTable resultWrk.Worksheets(1), 1, colPosGlobal, headerValue
+                    ElseIf rowPosLocal > 1 And Not existRow Then 'add new row
+                        arryTmp(rowWork-1, headersDictionary(headerValue)-1) = regExpCell.Replace(tmpArray(rowPosLocal, colPosLocal), "")
+                        'addFieldToNewTable resultWrk.Worksheets(1), rowWork, headersDictionary(headerValue), tmpArray(rowPosLocal, colPosLocal)
+                    End If
+                    
+                    If rowPosLocal = 1 And headerValue = idFieldName Then
+                        primaryPosSelection = colPosLocal
+                    End If
+                    
+                    'If not exist PK, Add primary key to map.
+                    If rowPosLocal > 1 And colPosLocal = primaryPosSelection And Not existRow Then
+                        primaryDictionary.Add tmpArray(rowPosLocal, colPosLocal), rowPosGlobal
+                    End If                    
+                Next
+            Next
+            
         End If
-    Next
-    squery = squery & "})"
+    Next   
 
-    'Call Method to Create Merge Table
-    generateResultTable tmptWrk, squery, idFieldName
-    
-    'Copy Values from Merge Table
-    tmptWrk.Sheets("Merge Table").ListObjects(1).Range.Copy
-    
-    'Create new Workbook
-    set resultWrk = objExcelApp.workbooks.Add
-    
-    'Paste Values in new WorkBook
-    resultWrk.Worksheets(1).Range("A1").PasteSpecial -4163 'xlPasteValues
-    
-    'Save Workbook and Close
-    resultWrk.SaveAs outputFolder & "\File_2- End_result.xlsx"
+    WriteLine "End merging " & Time()
     objXLBook.Close False
-    tmptWrk.Close False
+
+    WriteLine "Create new File " & Time()
+    Set resultWrk = objExcelApp.Workbooks.Add
+
+    WriteLine "new File Open " & Time()
+
+    WriteLine "Copy Data in new File " & Time()
+    Dim Destination 
+    
+    'discomment if you want to fill from first row 
+    'Set Destination = resultWrk.Worksheets(1).Range("A1")
+    
+    'if you want to fill from second row 
+    Set Destination = resultWrk.Worksheets(1).Range("A2")
+    
+    Destination.Resize(rowPosGlobal, colPosGlobal).Value2 = arryTmp
+    WriteLine "End Copy Data in new File " & Time()
+    resultWrk.SaveAs outputFolder & "\File_2- End_result.xlsx"
     resultWrk.Close
     objExcelApp.Quit
-    WriteLine "Process Completed"
-End Sub
-
-Sub generateResultTable(objXLBook, squery, idFieldName)
-    Dim qry
-    Dim currentSheet
-    squery = squery & ", {""" & idFieldName & """})"
-    'Create new Query to Append Tables
-    objXLBook.Queries.Add "Power_Query - Merge", _
-    ("let" & Chr(13) & "" & Chr(10) & " Source =" & squery & "" & Chr(13) & "" & Chr(10) & "in" & Chr(13) & "" & Chr(10) & " Source")
-
-    Set qry = objXLBook.Queries("Power_Query - Merge")
-    'Create new Sheet at end of workbook
-    Set currentSheet = objXLBook.Sheets.Add(,objXLBook.Sheets(objXLBook.Sheets.Count))
-    currentSheet.Name = "Merge Table"
-
-    'Load Query on Sheet
-    LoadToWorksheetOnly qry, currentSheet    
-End Sub
-
-Sub LoadToWorksheetOnly(query, currentSheet)
-     Dim qryTab
-     'Create Table with Append Query 
-     set qryTab = currentSheet.ListObjects.Add(3, _
-        ("OLEDB;Provider=Microsoft.Mashup.OleDb.1;Data Source=$Workbook$;Location=" & query.Name), _
-         , 1, currentSheet.Range("$A$1")).QueryTable
-         With qryTab
-            .CommandType = 4 'xlCmdDefault
-            .CommandText = Array("SELECT * FROM [" & query.Name & "]")
-            .RowNumbers = False
-            .FillAdjacentFormulas = False
-            .PreserveFormatting = True
-            .RefreshOnFileOpen = False
-            .BackgroundQuery = True
-            .RefreshStyle = 1 'xlInsertDeleteCells
-            .SavePassword = False
-            .SaveData = True
-            .AdjustColumnWidth = True
-            .RefreshPeriod = 0
-            .PreserveColumnInfo = False
-            .Refresh False
-        End With
-     
+    WriteLine "Process Completed " & Time()
 End Sub
 
 'Subrutine to write String in Console
-Sub WriteLine ( strLine )
+Sub WriteLine(strLine)
     'WScript.Stdout.WriteLine strLine
-	WScript.Echo strLine
+    WScript.Echo strLine
+End Sub
+
+
+Sub addFieldToNewTable(TmpSheet, rowPos, colPos, value)
+    TmpSheet.Cells(rowPos, colPos).value2 = value
+    
+    
 End Sub
